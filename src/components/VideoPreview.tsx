@@ -25,8 +25,8 @@ interface VideoPreviewProps {
   selectedFormat: DownloadFormat;
 }
 
-const VideoPreview: React.FC<VideoPreviewProps> = ({ 
-  videoInfo, 
+const VideoPreview: React.FC<VideoPreviewProps> = ({
+  videoInfo,
   onDownload,
   onAddToQueue,
   isDownloading,
@@ -36,7 +36,7 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const videoRef = useRef<HTMLVideoElement>(null);
-  
+
   const handlePreview = () => {
     setIsModalOpen(true);
   };
@@ -71,12 +71,12 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
   const previewVideoUrl = getPreviewVideoUrl(videoInfo.url, videoInfo.platform);
   return (
     <>
-      <Card className="border-border bg-card/50 backdrop-blur-sm animate-slide-up">
+      <Card className="glass-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
         <CardContent className="p-6">
           <div className="flex flex-col md:flex-row gap-4">
             {/* Video Preview */}
             <div className="relative md:w-80 w-full">
-              <div 
+              <div
                 className="aspect-video bg-muted rounded-lg flex items-center justify-center overflow-hidden cursor-pointer relative group"
                 onClick={handlePreview}
               >
@@ -100,13 +100,23 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
                   </div>
                 ) : (
                   <>
-                    <img 
+                    <img
                       src={videoInfo.thumbnail}
                       alt={videoInfo.title}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                       onError={(e) => {
                         const target = e.target as HTMLImageElement;
-                        target.src = '/placeholder.svg';
+                        // Provide fallback chain for thumbnails
+                        if (target.src.includes('maxresdefault')) {
+                          target.src = target.src.replace('maxresdefault', 'hqdefault');
+                        } else if (target.src.includes('hqdefault')) {
+                          target.src = target.src.replace('hqdefault', 'mqdefault');
+                        } else {
+                          // Final fallback if all else fails
+                          target.src = '/placeholder.svg'; // Ensure this asset exists or use a data URI
+                          target.style.display = 'none'; // Or hide it if no placeholder exists
+                          target.parentElement!.style.backgroundColor = '#333'; // Fallback background
+                        }
                       }}
                     />
                     {/* Play overlay */}
@@ -126,96 +136,96 @@ const VideoPreview: React.FC<VideoPreviewProps> = ({
               </div>
             </div>
 
-          {/* Info */}
-          <div className="flex-1 space-y-4">
-            <div>
-              <div className="flex items-center gap-2 mb-2">
-                <Badge variant="outline" className="border-primary text-primary">
-                  {videoInfo.platform}
-                </Badge>
-                <Badge variant="secondary">
-                  {selectedFormat.quality} {selectedFormat.format.toUpperCase()}
-                </Badge>
-              </div>
-              <h3 className="text-lg font-semibold leading-tight mb-2">
-                {videoInfo.title}
-              </h3>
-              
-              {/* Enhanced video details */}
-              <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mt-2">
-                {videoInfo.channel && (
-                  <div className="flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    <span>{videoInfo.channel}</span>
-                  </div>
-                )}
-                {videoInfo.views && videoInfo.views !== 'N/A' && (
-                  <div className="flex items-center gap-1">
-                    <PlayCircle className="h-3 w-3" />
-                    <span>{videoInfo.views}</span>
-                  </div>
-                )}
-                {videoInfo.duration !== 'N/A' && (
-                  <div className="flex items-center gap-1">
-                    <Clock className="h-3 w-3" />
-                    <span>{videoInfo.duration}</span>
-                  </div>
-                )}
-              </div>
+            {/* Info */}
+            <div className="flex-1 space-y-4">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <Badge variant="outline" className="border-primary text-primary">
+                    {videoInfo.platform}
+                  </Badge>
+                  <Badge variant="secondary">
+                    {selectedFormat.quality} {selectedFormat.format.toUpperCase()}
+                  </Badge>
+                </div>
+                <h3 className="text-lg font-semibold leading-tight mb-2">
+                  {videoInfo.title}
+                </h3>
 
-              <p className="text-sm text-muted-foreground mt-2">
-                Ready to download • {selectedFormat.type === 'audio' ? 'Audio Only' : 'Full Video'} • Estimated size: {selectedFormat.fileSize}
-              </p>
-            </div>
-
-            {/* Download Options */}
-            <div className="space-y-3">
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  onClick={onDownload}
-                  disabled={isDownloading}
-                  className="bg-gradient-primary hover:opacity-90 transition-opacity"
-                >
-                  {isDownloading ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Download className="h-4 w-4 mr-2" />
+                {/* Enhanced video details */}
+                <div className="flex flex-wrap gap-3 text-sm text-muted-foreground mt-2">
+                  {videoInfo.channel && (
+                    <div className="flex items-center gap-1">
+                      <User className="h-3 w-3" />
+                      <span>{videoInfo.channel}</span>
+                    </div>
                   )}
-                  {isDownloading ? 'Downloading...' : 'Download Now'}
-                </Button>
+                  {videoInfo.views && videoInfo.views !== 'N/A' && (
+                    <div className="flex items-center gap-1">
+                      <PlayCircle className="h-3 w-3" />
+                      <span>{videoInfo.views}</span>
+                    </div>
+                  )}
+                  {videoInfo.duration !== 'N/A' && (
+                    <div className="flex items-center gap-1">
+                      <Clock className="h-3 w-3" />
+                      <span>{videoInfo.duration}</span>
+                    </div>
+                  )}
+                </div>
 
-                <Button 
-                  variant="outline"
-                  onClick={onAddToQueue}
-                  disabled={isDownloading}
-                >
-                  <ListPlus className="h-4 w-4 mr-2" />
-                  Add to Queue
-                </Button>
-                
-                <Button variant="outline" size="sm" onClick={handlePreview}>
-                  <Eye className="h-4 w-4 mr-2" />
-                  Preview
-                </Button>
+                <p className="text-sm text-muted-foreground mt-2">
+                  Ready to download • {selectedFormat.type === 'audio' ? 'Audio Only' : 'Full Video'} • Estimated size: {selectedFormat.fileSize}
+                </p>
               </div>
 
-              <div className="text-xs text-muted-foreground">
-                <p>• Free & unlimited downloads • No registration required</p>
-                <p>• Multiple formats: MP4, WebM, MP3 • All quality options</p>
+              {/* Download Options */}
+              <div className="space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={onDownload}
+                    disabled={isDownloading}
+                    className="bg-gradient-primary hover:opacity-90 transition-opacity"
+                  >
+                    {isDownloading ? (
+                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    {isDownloading ? 'Downloading...' : 'Download Now'}
+                  </Button>
+
+                  <Button
+                    variant="outline"
+                    onClick={onAddToQueue}
+                    disabled={isDownloading}
+                  >
+                    <ListPlus className="h-4 w-4 mr-2" />
+                    Add to Queue
+                  </Button>
+
+                  <Button variant="outline" size="sm" onClick={handlePreview}>
+                    <Eye className="h-4 w-4 mr-2" />
+                    Preview
+                  </Button>
+                </div>
+
+                <div className="text-xs text-muted-foreground">
+                  <p>• Free & unlimited downloads • No registration required</p>
+                  <p>• Multiple formats: MP4, WebM, MP3 • All quality options</p>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      </CardContent>
-    </Card>
-    
-    <VideoModal
-      isOpen={isModalOpen}
-      onClose={() => setIsModalOpen(false)}
-      videoInfo={videoInfo}
-      onDownload={onDownload}
-      isDownloading={isDownloading}
-    />
+        </CardContent>
+      </Card>
+
+      <VideoModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        videoInfo={videoInfo}
+        onDownload={onDownload}
+        isDownloading={isDownloading}
+      />
     </>
   );
 };

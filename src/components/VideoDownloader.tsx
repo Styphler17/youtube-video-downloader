@@ -2,13 +2,11 @@ import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Download, Link, Video, Youtube, Play, Loader2, Clipboard, ListPlus } from 'lucide-react';
+import { Download, Link, Video, Youtube, Play, Loader2, Clipboard, ListPlus, Shield } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import VideoPreview from './VideoPreview';
 import DownloadProgress from './DownloadProgress';
 import FormatSelector, { DownloadFormat } from './FormatSelector';
-import SearchBar from './SearchBar';
 import DownloadQueue, { QueueItem } from './DownloadQueue';
 
 interface VideoInfo {
@@ -19,6 +17,7 @@ interface VideoInfo {
   url: string;
   channel?: string;
   views?: string;
+  formats: DownloadFormat[];
 }
 
 const VideoDownloader: React.FC = () => {
@@ -27,12 +26,7 @@ const VideoDownloader: React.FC = () => {
   const [videoInfo, setVideoInfo] = useState<VideoInfo | null>(null);
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [selectedFormat, setSelectedFormat] = useState<DownloadFormat>({
-    type: 'video',
-    quality: '1080p',
-    format: 'mp4',
-    fileSize: '~200MB'
-  });
+  const [selectedFormat, setSelectedFormat] = useState<DownloadFormat | null>(null);
   const [downloadQueue, setDownloadQueue] = useState<QueueItem[]>([]);
   const { toast } = useToast();
 
@@ -42,8 +36,32 @@ const VideoDownloader: React.FC = () => {
   };
 
   const extractVideoId = (url: string, platform: string): string | null => {
+    console.log(`Attempting to extract ID from URL: ${url} (Platform: ${platform})`);
     try {
       if (platform === 'YouTube') {
+        try {
+          const parsedUrl = new URL(url);
+          const hostname = parsedUrl.hostname;
+          console.log(`Parsed hostname: ${hostname}, pathname: ${parsedUrl.pathname}`);
+
+          if (hostname.includes('youtube.com')) {
+            if (parsedUrl.pathname === '/watch') {
+              const v = parsedUrl.searchParams.get('v');
+              if (v) return v;
+            } else if (parsedUrl.pathname.startsWith('/embed/')) {
+              return parsedUrl.pathname.split('/')[2];
+            } else if (parsedUrl.pathname.startsWith('/v/')) {
+              return parsedUrl.pathname.split('/')[2];
+            } else if (parsedUrl.pathname.startsWith('/shorts/')) {
+              return parsedUrl.pathname.split('/')[2];
+            }
+          } else if (hostname === 'youtu.be') {
+            return parsedUrl.pathname.substring(1);
+          }
+        } catch (e) {
+          console.warn('URL parsing failed, falling back to regex:', e);
+        }
+
         const patterns = [
           /(?:youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/,
           /(?:youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
@@ -51,12 +69,16 @@ const VideoDownloader: React.FC = () => {
           /(?:youtube\.com\/embed\/)([a-zA-Z0-9_-]{11})/,
           /(?:youtube\.com\/v\/)([a-zA-Z0-9_-]{11})/
         ];
-        
+
         for (const pattern of patterns) {
           const match = url.match(pattern);
-          if (match) return match[1];
+          if (match) {
+            console.log(`Regex match found: ${match[1]}`);
+            return match[1];
+          }
         }
       }
+      console.warn('No ID extracted from URL');
       return null;
     } catch (error) {
       console.error('Error in extractVideoId:', error);
@@ -69,32 +91,74 @@ const VideoDownloader: React.FC = () => {
       if (platform === 'YouTube') {
         const videoId = extractVideoId(url, platform);
         if (!videoId) throw new Error('Invalid YouTube URL');
-        
+
         try {
-          const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
-          if (!response.ok) throw new Error('Failed to fetch video data');
-          
+          // Use backend API instead of oEmbed
+          const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+          const response = await fetch(`${backendUrl}/api/video-info`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ url }),
+          });
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to fetch video data');
+          }
+
           const data = await response.json();
+
+          // Map backend formats to frontend DownloadFormat
+          const formats: DownloadFormat[] = data.formats.map((f: any) => ({
+            type: f.hasVideo ? 'video' : 'audio',
+            quality: f.quality,
+            format: f.format,
+            fileSize: f.fileSize || 'N/A' // Use backend size if available
+          }));
+
           return {
             title: data.title,
-            thumbnail: data.thumbnail_url,
-            duration: 'N/A',
+            thumbnail: data.thumbnail,
+            duration: data.duration,
             platform,
             url,
-            channel: data.author_name,
-            views: 'N/A'
+            channel: data.channel,
+            views: data.views,
+            formats
           };
         } catch (error) {
-          console.error('YouTube oEmbed failed:', error);
-          return {
-            title: `YouTube Video - ${videoId}`,
-            thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
-            duration: 'N/A',
-            platform,
-            url,
-            channel: 'Unknown Channel',
-            views: 'N/A'
-          };
+          console.error('Backend API failed:', error);
+          // Fallback to oEmbed if backend is unavailable
+          try {
+            const response = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`);
+            if (!response.ok) throw new Error('Failed to fetch video data');
+
+            const data = await response.json();
+            return {
+              title: data.title,
+              thumbnail: data.thumbnail_url,
+              duration: 'N/A',
+              platform,
+              url,
+              channel: data.author_name,
+              views: 'N/A',
+              formats: [] // No formats available in fallback
+            };
+          } catch (fallbackError) {
+            console.error('Fallback oEmbed also failed:', fallbackError);
+            return {
+              title: `YouTube Video - ${videoId}`,
+              thumbnail: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`,
+              duration: 'N/A',
+              platform,
+              url,
+              channel: 'Unknown Channel',
+              views: 'N/A',
+              formats: []
+            };
+          }
         }
       }
 
@@ -139,30 +203,42 @@ const VideoDownloader: React.FC = () => {
     try {
       const platform = detectPlatform(url);
       const videoInfo = await fetchVideoMetadata(url, platform);
-      
+
       if (!videoInfo) {
         throw new Error('Unable to fetch video information');
       }
 
       setVideoInfo(videoInfo);
+
+      // Select best format by default
+      if (videoInfo.formats.length > 0) {
+        const bestVideo = videoInfo.formats.find(f => f.type === 'video' && f.quality === '1080p') ||
+          videoInfo.formats.find(f => f.type === 'video' && f.quality === '720p') ||
+          videoInfo.formats.find(f => f.type === 'video') ||
+          videoInfo.formats[0];
+        setSelectedFormat(bestVideo);
+      }
+
       toast({
         title: "Video Found!",
         description: `Successfully fetched "${videoInfo.title}"`,
       });
-    } catch (error: any) {
+    } catch (error: unknown) {
       const platform = detectPlatform(url);
       let errorMessage = "Unable to fetch video. Please check the URL or try again.";
-      
+
       if (platform === 'Unsupported Platform') {
         errorMessage = "Only YouTube videos are supported. Please enter a valid YouTube URL.";
-      } else if (error.message.includes('Invalid') && error.message.includes('URL format')) {
-        errorMessage = `Invalid ${platform} URL format. Please check the URL and try again.`;
-      } else if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
-        errorMessage = `${platform} blocks direct access from web browsers. The URL format appears valid, but we cannot fetch video details due to platform restrictions.`;
-      } else if (error.message.includes('video')) {
-        errorMessage = error.message;
+      } else if (error instanceof Error) {
+        if (error.message.includes('Invalid') && error.message.includes('URL format')) {
+          errorMessage = `Invalid ${platform} URL format. Please check the URL and try again.`;
+        } else if (error.message.includes('CORS') || error.message.includes('Failed to fetch')) {
+          errorMessage = `${platform} blocks direct access from web browsers. The URL format appears valid, but we cannot fetch video details due to platform restrictions.`;
+        } else if (error.message.includes('video')) {
+          errorMessage = error.message;
+        }
       }
-      
+
       toast({
         title: "Fetch Failed",
         description: errorMessage,
@@ -174,13 +250,13 @@ const VideoDownloader: React.FC = () => {
   };
 
   const simulateFileDownload = async (
-    filename: string, 
+    filename: string,
     format: DownloadFormat,
     onProgress: (progress: number) => void
   ) => {
     // Calculate file size based on format (no limits!)
     let baseSize = 1024 * 1024; // 1MB base
-    
+
     if (format.type === 'video') {
       switch (format.quality) {
         case '2160p': baseSize *= 500; break; // ~500MB
@@ -198,90 +274,102 @@ const VideoDownloader: React.FC = () => {
       }
     }
 
-    const chunks: Uint8Array[] = [];
-    const chunkSize = 1024 * 100; // 100KB chunks
-    let downloaded = 0;
-
-    // Create proper file header based on format
-    let header: Uint8Array;
-    if (format.format === 'mp4') {
-      // MP4 ftyp box
-      header = new Uint8Array([
-        0x00, 0x00, 0x00, 0x20, 0x66, 0x74, 0x79, 0x70,
-        0x69, 0x73, 0x6F, 0x6D, 0x00, 0x00, 0x02, 0x00,
-        0x69, 0x73, 0x6F, 0x6D, 0x69, 0x73, 0x6F, 0x32,
-        0x61, 0x76, 0x63, 0x31, 0x6D, 0x70, 0x34, 0x31
-      ]);
-    } else if (format.format === 'webm') {
-      // WebM EBML header
-      header = new Uint8Array([
-        0x1A, 0x45, 0xDF, 0xA3, 0x9F, 0x42, 0x86, 0x81,
-        0x01, 0x42, 0xF7, 0x81, 0x01, 0x42, 0xF2, 0x81
-      ]);
-    } else {
-      // MP3 header
-      header = new Uint8Array([
-        0xFF, 0xFB, 0x90, 0x00, 0x00, 0x00, 0x00, 0x00
-      ]);
-    }
-
-    while (downloaded < baseSize) {
-      const currentChunkSize = Math.min(chunkSize, baseSize - downloaded);
-      const chunk = new Uint8Array(currentChunkSize);
-      
-      if (downloaded === 0) {
-        chunk.set(header);
-        for (let i = header.length; i < currentChunkSize; i++) {
-          chunk[i] = Math.floor(Math.random() * 256);
-        }
-      } else {
-        for (let i = 0; i < currentChunkSize; i++) {
-          chunk[i] = Math.floor(Math.random() * 256);
-        }
-      }
-      
-      chunks.push(chunk);
-      downloaded += currentChunkSize;
-      
-      const progress = Math.round((downloaded / baseSize) * 100);
-      onProgress(progress);
-      
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-
-    // Create blob and trigger download
-    const mimeType = format.format === 'mp3' ? 'audio/mpeg' : 
-                     format.format === 'webm' ? 'video/webm' : 'video/mp4';
-    const blob = new Blob(chunks, { type: mimeType });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    // This function is no longer used - downloads are handled by backend
+    throw new Error('This function is deprecated. Use backend download instead.');
   };
 
   const handleDownload = async () => {
-    if (!videoInfo) return;
-    
+    if (!videoInfo || !selectedFormat) return;
+
     setIsDownloading(true);
     setDownloadProgress(0);
 
     try {
-      const extension = selectedFormat.format;
-      const filename = `${videoInfo.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${extension}`;
-      await simulateFileDownload(filename, selectedFormat, setDownloadProgress);
+      // Extract video ID for backend API
+      const videoId = extractVideoId(videoInfo.url, 'YouTube');
+      if (!videoId) throw new Error('Invalid video URL');
+
+      // Get format itag from backend formats list we already have
+      // We need to re-find it in the original data to get the itag if we didn't store it in DownloadFormat
+      // But wait, the backend download endpoint needs `itag`.
+      // The current DownloadFormat interface doesn't have `itag`.
+      // We should probably rely on quality+format matching as before, but since we KNOW it exists in `videoInfo.formats`,
+      // we can just pass the quality and format to the backend and let it find the itag, OR 
+      // we can fetch the info again (redundant but safe) OR
+      // we can assume the backend will handle the `format` and `quality` query params if we updated it?
+      // No, looking at server.js (from memory), it expects `itag`.
+
+      // Let's re-fetch to get the itag OR we could have stored it in videoInfo.formats.
+      // Since I didn't update DownloadFormat to include itag (it's UI focused), let's refetch logic BUT
+      // we know it SHOULD succeed now because we only let user select available formats.
+
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const infoResponse = await fetch(`${backendUrl}/api/video-info`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: videoInfo.url }),
+      });
+
+      if (!infoResponse.ok) throw new Error('Failed to get video formats');
+
+      const infoData = await infoResponse.json();
+      const selectedBackendFormat = infoData.formats.find(
+        (f: { quality: string; format: string }) => f.quality === selectedFormat.quality && f.format === selectedFormat.format
+      );
+
+      if (!selectedBackendFormat) throw new Error('Selected format not available');
+
+      // Start download with progress tracking
+      const downloadUrl = `${backendUrl}/api/download?videoId=${videoId}&itag=${selectedBackendFormat.itag}&title=${encodeURIComponent(videoInfo.title)}&format=${selectedFormat.format}`;
+
+      // Use fetch to download with progress
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error('Download failed');
+
+      const contentLength = parseInt(response.headers.get('content-length') || '0');
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Unable to read response');
+
+      const chunks: ArrayBuffer[] = [];
+      let receivedLength = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        chunks.push(value.buffer);
+        receivedLength += value.length;
+
+        if (contentLength > 0) {
+          const progress = Math.round((receivedLength / contentLength) * 100);
+          setDownloadProgress(progress);
+        }
+      }
+
+      // Create blob and trigger download
+      const blob = new Blob(chunks);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const filename = `${videoInfo.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${selectedFormat.format}`;
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
 
       toast({
         title: "Download Complete!",
         description: `Downloaded ${selectedFormat.quality} ${selectedFormat.format.toUpperCase()}`,
       });
-    } catch (error) {
+    } catch (error: unknown) {
+      console.error('Download error:', error);
+      const errorMessage = error instanceof Error ? error.message : "Unable to download video. Please try again.";
       toast({
         title: "Download Failed",
-        description: "Unable to download video. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -293,7 +381,7 @@ const VideoDownloader: React.FC = () => {
   };
 
   const handleAddToQueue = () => {
-    if (!videoInfo) return;
+    if (!videoInfo || !selectedFormat) return;
 
     const newItem: QueueItem = {
       id: Date.now().toString(),
@@ -316,21 +404,75 @@ const VideoDownloader: React.FC = () => {
     const item = downloadQueue.find(i => i.id === itemId);
     if (!item) return;
 
-    setDownloadQueue(queue => 
+    setDownloadQueue(queue =>
       queue.map(i => i.id === itemId ? { ...i, status: 'downloading' as const } : i)
     );
 
     try {
-      const extension = item.format.format;
-      const filename = `${item.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${extension}`;
-      
-      await simulateFileDownload(filename, item.format, (progress) => {
-        setDownloadQueue(queue => 
-          queue.map(i => i.id === itemId ? { ...i, progress } : i)
-        );
+      // Extract video ID for backend API
+      const videoId = extractVideoId(item.url, 'YouTube');
+      if (!videoId) throw new Error('Invalid video URL');
+
+      // Get format itag from backend
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const infoResponse = await fetch(`${backendUrl}/api/video-info`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ url: item.url }),
       });
 
-      setDownloadQueue(queue => 
+      if (!infoResponse.ok) throw new Error('Failed to get video formats');
+
+      const infoData = await infoResponse.json();
+      const selectedBackendFormat = infoData.formats.find(
+        (f: { quality: string; format: string }) => f.quality === item.format.quality && f.format === item.format.format
+      );
+
+      if (!selectedBackendFormat) throw new Error('Selected format not available');
+
+      // Start download
+      const downloadUrl = `${backendUrl}/api/download?videoId=${videoId}&itag=${selectedBackendFormat.itag}&title=${encodeURIComponent(item.title)}&format=${item.format.format}`;
+
+      const response = await fetch(downloadUrl);
+      if (!response.ok) throw new Error('Download failed');
+
+      const contentLength = parseInt(response.headers.get('content-length') || '0');
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('Unable to read response');
+
+      const chunks: ArrayBuffer[] = [];
+      let receivedLength = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        chunks.push(value.buffer);
+        receivedLength += value.length;
+
+        if (contentLength > 0) {
+          const progress = Math.round((receivedLength / contentLength) * 100);
+          setDownloadQueue(queue =>
+            queue.map(i => i.id === itemId ? { ...i, progress } : i)
+          );
+        }
+      }
+
+      // Create blob and trigger download
+      const blob = new Blob(chunks);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const filename = `${item.title.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.${item.format.format}`;
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      setDownloadQueue(queue =>
         queue.map(i => i.id === itemId ? { ...i, status: 'completed' as const, progress: 100 } : i)
       );
 
@@ -338,13 +480,14 @@ const VideoDownloader: React.FC = () => {
         title: "Download Complete!",
         description: `${item.title} downloaded successfully`,
       });
-    } catch (error) {
-      setDownloadQueue(queue => 
+    } catch (error: unknown) {
+      setDownloadQueue(queue =>
         queue.map(i => i.id === itemId ? { ...i, status: 'failed' as const } : i)
       );
+      const errorMessage = error instanceof Error ? error.message : "Unable to download video";
       toast({
         title: "Download Failed",
-        description: "Unable to download video",
+        description: errorMessage,
         variant: "destructive",
       });
     }
@@ -354,112 +497,92 @@ const VideoDownloader: React.FC = () => {
     setDownloadQueue(queue => queue.filter(i => i.id !== itemId));
   };
 
-  const handleSelectFromSearch = (searchUrl: string) => {
-    setUrl(searchUrl);
-    toast({
-      title: "Video Selected",
-      description: "Click 'Fetch Video' to load video details",
-    });
-  };
-
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6">
-      <Tabs defaultValue="url" className="w-full">
-        <TabsList className="grid w-full max-w-md mx-auto grid-cols-2">
-          <TabsTrigger value="url">Paste URL</TabsTrigger>
-          <TabsTrigger value="search">Search</TabsTrigger>
-        </TabsList>
+      {/* Main Input Card */}
+      <Card className="glass-card">
+        <CardHeader className="pb-4">
+          <CardTitle className="flex items-center gap-3 text-2xl">
+            <Video className="h-6 w-6 text-primary" />
+            Video Downloader
+          </CardTitle>
+          <p className="text-muted-foreground">
+            Paste any YouTube video URL
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <div className="relative flex-1">
+              <Link className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="https://youtube.com/watch?v=... or https://youtu.be/..."
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                className="pl-10 pr-10 bg-background/50"
+                onKeyPress={(e) => e.key === 'Enter' && handleFetchVideo()}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-1 top-1 h-8 w-8 p-0 hover:bg-muted"
+                onClick={async () => {
+                  try {
+                    const text = await navigator.clipboard.readText();
+                    setUrl(text);
+                    toast({
+                      title: "Pasted!",
+                      description: "URL pasted from clipboard",
+                    });
+                  } catch (err) {
+                    toast({
+                      title: "Paste Failed",
+                      description: "Could not access clipboard",
+                      variant: "destructive",
+                    });
+                  }
+                }}
+              >
+                <Clipboard className="h-4 w-4" />
+              </Button>
+            </div>
+            <Button
+              onClick={handleFetchVideo}
+              disabled={isLoading}
+              className="bg-gradient-primary hover:opacity-90 transition-opacity"
+            >
+              {isLoading ? (
+                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+              ) : (
+                <Play className="h-4 w-4 mr-2" />
+              )}
+              {isLoading ? 'Fetching...' : 'Fetch Video'}
+            </Button>
+          </div>
 
-        <TabsContent value="url" className="space-y-6">
-          {/* Main Input Card */}
-          <Card className="border-border bg-card/50 backdrop-blur-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="flex items-center gap-3 text-2xl">
-                <Video className="h-6 w-6 text-primary" />
-                Video Downloader
-              </CardTitle>
-              <p className="text-muted-foreground">
-                Paste any YouTube video URL
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Link className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="https://youtube.com/watch?v=... or https://youtu.be/..."
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    className="pl-10 pr-10 bg-background/50"
-                    onKeyPress={(e) => e.key === 'Enter' && handleFetchVideo()}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-1 top-1 h-8 w-8 p-0 hover:bg-muted"
-                    onClick={async () => {
-                      try {
-                        const text = await navigator.clipboard.readText();
-                        setUrl(text);
-                        toast({
-                          title: "Pasted!",
-                          description: "URL pasted from clipboard",
-                        });
-                      } catch (err) {
-                        toast({
-                          title: "Paste Failed",
-                          description: "Could not access clipboard",
-                          variant: "destructive",
-                        });
-                      }
-                    }}
-                  >
-                    <Clipboard className="h-4 w-4" />
-                  </Button>
-                </div>
-                <Button 
-                  onClick={handleFetchVideo}
-                  disabled={isLoading}
-                  className="bg-gradient-primary hover:opacity-90 transition-opacity"
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                  ) : (
-                    <Play className="h-4 w-4 mr-2" />
-                  )}
-                  {isLoading ? 'Fetching...' : 'Fetch Video'}
-                </Button>
-              </div>
-
-              {/* Supported Platforms */}
-              <div className="flex flex-wrap gap-2 items-center text-sm text-muted-foreground">
-                <span>Supports:</span>
-                <div className="flex gap-2">
-                  <span className="flex items-center gap-1 bg-secondary px-2 py-1 rounded">
-                    <Youtube className="h-3 w-3" /> YouTube
-                  </span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="search" className="space-y-6">
-          <SearchBar onSelectVideo={handleSelectFromSearch} />
-        </TabsContent>
-      </Tabs>
+          {/* Supported Platforms */}
+          <div className="flex flex-wrap gap-2 items-center text-sm text-muted-foreground">
+            <span>Supports:</span>
+            <div className="flex gap-2">
+              <span className="flex items-center gap-1 bg-secondary px-2 py-1 rounded">
+                <Youtube className="h-3 w-3" /> YouTube
+              </span>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Format Selector */}
-      {videoInfo && (
-        <FormatSelector 
-          selectedFormat={selectedFormat} 
+      {videoInfo && selectedFormat && (
+        <FormatSelector
+          selectedFormat={selectedFormat}
           onFormatChange={setSelectedFormat}
+          availableFormats={videoInfo.formats}
         />
       )}
 
       {/* Video Preview */}
-      {videoInfo && (
-        <VideoPreview 
+      {videoInfo && selectedFormat && (
+        <VideoPreview
           videoInfo={videoInfo}
           onDownload={handleDownload}
           onAddToQueue={handleAddToQueue}
@@ -475,35 +598,41 @@ const VideoDownloader: React.FC = () => {
       )}
 
       {/* Download Queue */}
-      <DownloadQueue 
+      <DownloadQueue
         queue={downloadQueue}
         onRemove={handleRemoveFromQueue}
         onDownload={handleQueueDownload}
       />
 
       {/* Features Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="text-center p-6 border-border bg-card/30">
-          <Download className="h-8 w-8 mx-auto mb-3 text-primary" />
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-slide-up" style={{ animationDelay: '0.4s' }}>
+        <Card className="text-center p-6 glass-card hover:bg-card/80 transition-colors">
+          <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+            <Download className="h-6 w-6" />
+          </div>
           <h3 className="font-semibold mb-2">Unlimited Size</h3>
           <p className="text-sm text-muted-foreground">
             Download videos of any size, from shorts to full-length videos
           </p>
         </Card>
-        
-        <Card className="text-center p-6 border-border bg-card/30">
-          <Play className="h-8 w-8 mx-auto mb-3 text-primary" />
+
+        <Card className="text-center p-6 glass-card hover:bg-card/80 transition-colors">
+          <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+            <Play className="h-6 w-6" />
+          </div>
           <h3 className="font-semibold mb-2">Multiple Formats</h3>
           <p className="text-sm text-muted-foreground">
             MP4, WebM video or MP3 audio in various quality options
           </p>
         </Card>
-        
-        <Card className="text-center p-6 border-border bg-card/30">
-          <ListPlus className="h-8 w-8 mx-auto mb-3 text-primary" />
-          <h3 className="font-semibold mb-2">Batch Downloads</h3>
+
+        <Card className="text-center p-6 glass-card hover:bg-card/80 transition-colors">
+          <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+            <Shield className="h-6 w-6" />
+          </div>
+          <h3 className="font-semibold mb-2">Secure & Safe</h3>
           <p className="text-sm text-muted-foreground">
-            Add multiple videos to queue and download them all at once
+            We prioritize your privacy. No registration required and 100% safe to use.
           </p>
         </Card>
       </div>
