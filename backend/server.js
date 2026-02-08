@@ -159,17 +159,40 @@ app.post('/api/video-info', async (req, res) => {
     }
 
     // Get video info using ytdl-core with robust headers and agent
-    const info = await ytdl.getInfo(videoId, {
-      agent,
-      requestOptions: { // Important: Cache is disabled by default in serverless context usually, but good to be safe
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Referer': 'https://www.youtube.com/',
-          'Accept-Language': 'en-US,en;q=0.9'
+    // We try multiple strategies if the default fails
+    let info;
+    try {
+        console.log('Attempting fetch with default client...');
+        info = await ytdl.getInfo(videoId, {
+          agent,
+          requestOptions: {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Referer': 'https://www.youtube.com/',
+              'Accept-Language': 'en-US,en;q=0.9'
+            }
+          },
+          lang: 'en'
+        });
+    } catch (e) {
+        console.log('Default client failed, trying iOS...');
+        try {
+            // Fallback to iOS client which sometimes works better for age-restricted/blocked content
+            info = await ytdl.getInfo(videoId, {
+              agent,
+              playerClients: ['IOS'],
+              lang: 'en'
+            });
+        } catch (e2) {
+             console.log('iOS client failed, trying Android...');
+             // Fallback to Android
+             info = await ytdl.getInfo(videoId, {
+              agent,
+              playerClients: ['ANDROID'],
+              lang: 'en'
+            });
         }
-      },
-      lang: 'en'
-    });
+    }
 
     // Extract basic metadata
     const videoDetails = info.videoDetails;
