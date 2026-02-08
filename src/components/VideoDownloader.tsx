@@ -239,17 +239,13 @@ const VideoDownloader: React.FC = () => {
       setVideoInfo(videoInfo);
       addToHistory(videoInfo.url, videoInfo.title);
 
-      // Select best format by default
       if (videoInfo.formats.length > 0) {
-        const bestVideo = videoInfo.formats.find(f => f.type === 'video' && f.quality === '1080p') ||
-          videoInfo.formats.find(f => f.type === 'video' && f.quality === '720p') ||
-          videoInfo.formats.find(f => f.type === 'video') ||
-          videoInfo.formats[0];
-        setSelectedFormat(bestVideo);
-
+        // ... selection logic ...
+        // Log debug info
+        console.log('Video Info Debug:', data.debug);
         toast({
           title: "Video Found!",
-          description: `Successfully fetched "${videoInfo.title}"`,
+          description: `Fetched via ${data.debug?.usedClient || 'WEB'} (${data.debug?.totalFormatsFound} formats)`,
         });
       } else {
         // No formats found - throw error to be caught below

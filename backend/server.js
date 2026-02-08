@@ -170,36 +170,44 @@ app.post('/api/video-info', async (req, res) => {
     let info;
     const clients = ['WEB', 'IOS', 'ANDROID'];
     let lastError;
+    let usedClient = 'NONE';
 
     for (const client of clients) {
       try {
         console.log(`Attempting fetch with ${client} client...`);
         
-        const options = {
+        let options = {
           agent,
           lang: 'en',
           requestOptions: {
             family: 4, // Force IPv4
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Referer': 'https://www.youtube.com/',
-              'Accept-Language': 'en-US,en;q=0.9'
-            }
           }
         };
 
-        if (client === 'IOS') options.playerClients = ['IOS'];
-        if (client === 'ANDROID') options.playerClients = ['ANDROID'];
+        // Only add custom headers for WEB client. 
+        // For Mobile clients, let ytdl-core set the correct User-Agent.
+        if (client === 'WEB') {
+           options.requestOptions.headers = {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Referer': 'https://www.youtube.com/',
+              'Accept-Language': 'en-US,en;q=0.9'
+           };
+        } else if (client === 'IOS') {
+           options.playerClients = ['IOS'];
+        } else if (client === 'ANDROID') {
+           options.playerClients = ['ANDROID'];
+        }
 
         const tempInfo = await ytdl.getInfo(videoId, options);
 
         // Check if we got any high quality formats (>= 720p)
-        const hasHighQuality = tempInfo.formats.some(f => f.bitrate && (f.height >= 720 || (f.hasVideo && !f.height))); // Sometimes minimal metadata
+        const hasHighQuality = tempInfo.formats.some(f => f.bitrate && (f.height >= 720 || (f.hasVideo && !f.height))); 
         
         // If we found high quality, or if it's the last client, use it.
         // But if it's WEB and low quality, treat as failure to trigger fallback.
         if (hasHighQuality || client === 'ANDROID') {
            info = tempInfo;
+           usedClient = client;
            console.log(`Success with ${client} client. High quality found: ${hasHighQuality}`);
            break; 
         } else {
@@ -351,7 +359,12 @@ app.post('/api/video-info', async (req, res) => {
       views: formatViews(views),
       duration: formatDuration(duration),
       formats: allFormats,
-      videoId
+      videoId,
+      debug: {
+        usedClient,
+        totalFormatsFound: formats.length,
+        hasHighQuality: formats.some(f => f.height >= 720)
+      }
     });
 
   } catch (error) {
