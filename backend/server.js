@@ -145,14 +145,23 @@ app.post('/api/video-info', async (req, res) => {
     }
 
     // Create an agent with cookies if available (to bypass YouTube IP blocks)
-    const agent = process.env.YOUTUBE_COOKIES 
-      ? ytdl.createAgent(JSON.parse(process.env.YOUTUBE_COOKIES)) 
-      : undefined;
+    let agent;
+    if (process.env.YOUTUBE_COOKIES) {
+      try {
+        const cookies = JSON.parse(process.env.YOUTUBE_COOKIES);
+        agent = ytdl.createAgent(cookies);
+        console.log('Using YouTube Cookies for authentication');
+      } catch (err) {
+        console.error('Failed to parse YOUTUBE_COOKIES:', err.message);
+      }
+    } else {
+      console.log('No YOUTUBE_COOKIES provided, using default agent');
+    }
 
     // Get video info using ytdl-core with robust headers and agent
     const info = await ytdl.getInfo(videoId, {
       agent,
-      requestOptions: {
+      requestOptions: { // Important: Cache is disabled by default in serverless context usually, but good to be safe
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Referer': 'https://www.youtube.com/',
@@ -309,9 +318,15 @@ app.get('/api/download', async (req, res) => {
     }
 
     // Create an agent with cookies if available
-    const agent = process.env.YOUTUBE_COOKIES 
-      ? ytdl.createAgent(JSON.parse(process.env.YOUTUBE_COOKIES)) 
-      : undefined;
+    let agent;
+    if (process.env.YOUTUBE_COOKIES) {
+      try {
+        const cookies = JSON.parse(process.env.YOUTUBE_COOKIES);
+        agent = ytdl.createAgent(cookies);
+      } catch (err) {
+        console.error('Failed to parse YOUTUBE_COOKIES for download:', err.message);
+      }
+    }
 
     // Get video info to validate and stream from pre-fetched data
     const info = await ytdl.getInfo(videoId, {
