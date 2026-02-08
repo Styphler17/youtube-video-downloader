@@ -607,111 +607,110 @@ const VideoDownloader: React.FC = () => {
             </div>
           </div>
         </CardContent>
-      </CardContent>
-    </Card>
+      </Card>
 
-      {/* Recent History */ }
-  {
-    history.length > 0 && (
-      <div className="flex flex-col gap-2 animate-fade-in">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground px-1">
-          <History className="h-4 w-4" />
-          <span>Recent Links</span>
-        </div>
-        <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
-          {history.map((item) => (
-            <button
-              key={item.timestamp}
-              onClick={() => {
-                setUrl(item.url);
-                handleFetchVideo();
-              }}
-              className="text-left p-3 rounded-lg border bg-card/50 hover:bg-card hover:border-primary/50 transition-all group"
-            >
-              <div className="font-medium text-sm truncate group-hover:text-primary transition-colors">
-                {item.title}
-              </div>
-              <div className="text-xs text-muted-foreground truncate opacity-70">
-                {item.url}
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
-    )
-  }
+      {/* Recent History */}
+      {
+        history.length > 0 && (
+          <div className="flex flex-col gap-2 animate-fade-in">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground px-1">
+              <History className="h-4 w-4" />
+              <span>Recent Links</span>
+            </div>
+            <div className="grid gap-2 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+              {history.map((item) => (
+                <button
+                  key={item.timestamp}
+                  onClick={() => {
+                    setUrl(item.url);
+                    handleFetchVideo();
+                  }}
+                  className="text-left p-3 rounded-lg border bg-card/50 hover:bg-card hover:border-primary/50 transition-all group"
+                >
+                  <div className="font-medium text-sm truncate group-hover:text-primary transition-colors">
+                    {item.title}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate opacity-70">
+                    {item.url}
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      }
 
-  {/* Format Selector */ }
-  {
-    videoInfo && selectedFormat && (
-      <FormatSelector
-        selectedFormat={selectedFormat}
-        onFormatChange={setSelectedFormat}
-        availableFormats={videoInfo.formats}
+      {/* Format Selector */}
+      {
+        videoInfo && selectedFormat && (
+          <FormatSelector
+            selectedFormat={selectedFormat}
+            onFormatChange={setSelectedFormat}
+            availableFormats={videoInfo.formats}
+          />
+        )
+      }
+
+      {/* Video Preview */}
+      {
+        videoInfo && selectedFormat && (
+          <VideoPreview
+            videoInfo={videoInfo}
+            onDownload={handleDownload}
+            onAddToQueue={handleAddToQueue}
+            isDownloading={isDownloading}
+            autoPlay={true}
+            selectedFormat={selectedFormat}
+          />
+        )
+      }
+
+      {/* Download Progress */}
+      {
+        isDownloading && (
+          <DownloadProgress progress={downloadProgress} />
+        )
+      }
+
+      {/* Download Queue */}
+      <DownloadQueue
+        queue={downloadQueue}
+        onRemove={handleRemoveFromQueue}
+        onDownload={handleQueueDownload}
       />
-    )
-  }
 
-  {/* Video Preview */ }
-  {
-    videoInfo && selectedFormat && (
-      <VideoPreview
-        videoInfo={videoInfo}
-        onDownload={handleDownload}
-        onAddToQueue={handleAddToQueue}
-        isDownloading={isDownloading}
-        autoPlay={true}
-        selectedFormat={selectedFormat}
-      />
-    )
-  }
+      {/* Features Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-slide-up" style={{ animationDelay: '0.4s' }}>
+        <Card className="text-center p-6 glass-card hover:bg-card/80 transition-colors">
+          <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+            <Download className="h-6 w-6" />
+          </div>
+          <h3 className="font-semibold mb-2">Unlimited Size</h3>
+          <p className="text-sm text-muted-foreground">
+            Download videos of any size, from shorts to full-length videos
+          </p>
+        </Card>
 
-  {/* Download Progress */ }
-  {
-    isDownloading && (
-      <DownloadProgress progress={downloadProgress} />
-    )
-  }
+        <Card className="text-center p-6 glass-card hover:bg-card/80 transition-colors">
+          <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+            <Play className="h-6 w-6" />
+          </div>
+          <h3 className="font-semibold mb-2">Multiple Formats</h3>
+          <p className="text-sm text-muted-foreground">
+            MP4, WebM video or MP3 audio in various quality options
+          </p>
+        </Card>
 
-  {/* Download Queue */ }
-  <DownloadQueue
-    queue={downloadQueue}
-    onRemove={handleRemoveFromQueue}
-    onDownload={handleQueueDownload}
-  />
-
-  {/* Features Grid */ }
-  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 animate-slide-up" style={{ animationDelay: '0.4s' }}>
-    <Card className="text-center p-6 glass-card hover:bg-card/80 transition-colors">
-      <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-        <Download className="h-6 w-6" />
+        <Card className="text-center p-6 glass-card hover:bg-card/80 transition-colors">
+          <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+            <Shield className="h-6 w-6" />
+          </div>
+          <h3 className="font-semibold mb-2">Secure & Safe</h3>
+          <p className="text-sm text-muted-foreground">
+            We prioritize your privacy. No registration required and 100% safe to use.
+          </p>
+        </Card>
       </div>
-      <h3 className="font-semibold mb-2">Unlimited Size</h3>
-      <p className="text-sm text-muted-foreground">
-        Download videos of any size, from shorts to full-length videos
-      </p>
-    </Card>
-
-    <Card className="text-center p-6 glass-card hover:bg-card/80 transition-colors">
-      <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-        <Play className="h-6 w-6" />
-      </div>
-      <h3 className="font-semibold mb-2">Multiple Formats</h3>
-      <p className="text-sm text-muted-foreground">
-        MP4, WebM video or MP3 audio in various quality options
-      </p>
-    </Card>
-
-    <Card className="text-center p-6 glass-card hover:bg-card/80 transition-colors">
-      <div className="h-12 w-12 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center text-primary">
-        <Shield className="h-6 w-6" />
-      </div>
-      <h3 className="font-semibold mb-2">Secure & Safe</h3>
-      <p className="text-sm text-muted-foreground">
-        We prioritize your privacy. No registration required and 100% safe to use.
-      </p>
-    </Card>
-  </div>
     </div >
   );
 };
