@@ -217,12 +217,15 @@ const VideoDownloader: React.FC = () => {
           videoInfo.formats.find(f => f.type === 'video') ||
           videoInfo.formats[0];
         setSelectedFormat(bestVideo);
-      }
 
-      toast({
-        title: "Video Found!",
-        description: `Successfully fetched "${videoInfo.title}"`,
-      });
+        toast({
+          title: "Video Found!",
+          description: `Successfully fetched "${videoInfo.title}"`,
+        });
+      } else {
+        // No formats found - throw error to be caught below
+        throw new Error("Video found, but no downloadable formats are available. This might be due to server restrictions.");
+      }
     } catch (error: unknown) {
       const platform = detectPlatform(url);
       let errorMessage = "Unable to fetch video. Please check the URL or try again.";
