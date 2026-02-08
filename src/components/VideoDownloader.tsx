@@ -94,7 +94,7 @@ const VideoDownloader: React.FC = () => {
 
         try {
           // Use backend API instead of oEmbed
-          const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+          const backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
           const response = await fetch(`${backendUrl}/api/video-info`, {
             method: 'POST',
             headers: {
@@ -306,7 +306,7 @@ const VideoDownloader: React.FC = () => {
       // Since I didn't update DownloadFormat to include itag (it's UI focused), let's refetch logic BUT
       // we know it SHOULD succeed now because we only let user select available formats.
 
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
       const infoResponse = await fetch(`${backendUrl}/api/video-info`, {
         method: 'POST',
         headers: {
@@ -417,7 +417,7 @@ const VideoDownloader: React.FC = () => {
       if (!videoId) throw new Error('Invalid video URL');
 
       // Get format itag from backend
-      const backendUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = import.meta.env.VITE_BACKEND_URL || (import.meta.env.PROD ? '' : 'http://localhost:3001');
       const infoResponse = await fetch(`${backendUrl}/api/video-info`, {
         method: 'POST',
         headers: {
