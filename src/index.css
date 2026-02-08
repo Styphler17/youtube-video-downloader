@@ -105,6 +105,11 @@
     opacity: 0;
     animation-delay: 0.2s;
   }
+
+  .bg-gradient-primary {
+    background: var(--gradient-primary);
+    color: white;
+  }
 }
 
 @keyframes fadeIn {
