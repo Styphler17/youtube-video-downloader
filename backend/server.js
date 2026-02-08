@@ -158,14 +158,20 @@ app.post('/api/video-info', async (req, res) => {
       console.log('No YOUTUBE_COOKIES provided, using default agent');
     }
 
+    // Check for cookies
+    if (!process.env.YOUTUBE_COOKIES) {
+      console.warn('WARNING: YOUTUBE_COOKIES environment variable is missing.');
+    }
+
     // Get video info using ytdl-core with robust headers and agent
     // We try multiple strategies if the default fails
     let info;
     try {
-        console.log('Attempting fetch with default client...');
+        console.log('Attempting fetch with default client (IPv4 enforced)...');
         info = await ytdl.getInfo(videoId, {
           agent,
           requestOptions: {
+            family: 4, // Force IPv4
             headers: {
               'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
               'Referer': 'https://www.youtube.com/',
@@ -175,20 +181,24 @@ app.post('/api/video-info', async (req, res) => {
           lang: 'en'
         });
     } catch (e) {
+        console.error('Default client failed:', e.message);
         console.log('Default client failed, trying iOS...');
         try {
-            // Fallback to iOS client which sometimes works better for age-restricted/blocked content
+            // Fallback to iOS client
             info = await ytdl.getInfo(videoId, {
               agent,
               playerClients: ['IOS'],
+              requestOptions: { family: 4 }, // Force IPv4
               lang: 'en'
             });
         } catch (e2) {
+             console.error('iOS client failed:', e2.message);
              console.log('iOS client failed, trying Android...');
              // Fallback to Android
              info = await ytdl.getInfo(videoId, {
               agent,
               playerClients: ['ANDROID'],
+              requestOptions: { family: 4 }, // Force IPv4
               lang: 'en'
             });
         }
@@ -324,9 +334,26 @@ app.post('/api/video-info', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching video info:', error);
+    
+    // Check if cookies were provided to give better guidance
+    const hasCookies = !!process.env.YOUTUBE_COOKIES;
+    let userMessage = error.message;
+
+    if (error.message.includes('429')) {
+      userMessage = 'YouTube is rate limiting requests from this server. Please try again later.';
+    } else if (error.message.includes('Sign in')) {
+      userMessage = hasCookies 
+        ? 'YouTube rejected the provided cookies. They may be expired or invalid.' 
+        : 'YouTube requires sign-in for this video. Please update Vercel env vars with cookies.';
+    } else if (error.message.includes('formats')) {
+      userMessage = hasCookies 
+        ? 'No playable formats found even with cookies. Vercel IP might be blocked.' 
+        : 'No playable formats found. Please add YOUTUBE_COOKIES to Vercel env vars.';
+    }
+
     res.status(500).json({
       error: 'Failed to fetch video information',
-      details: error.message
+      details: userMessage
     });
   }
 });
