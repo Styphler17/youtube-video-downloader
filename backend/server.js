@@ -165,11 +165,19 @@ app.post('/api/video-info', async (req, res) => {
 
     // Get video info using ytdl-core with robust headers and agent
     // We try multiple strategies if the default fails
+    // Get video info using ytdl-core with robust headers and agent
+    // We try multiple strategies if the default fails OR if it returns low quality
     let info;
-    try {
-        console.log('Attempting fetch with default client (IPv4 enforced)...');
-        info = await ytdl.getInfo(videoId, {
+    const clients = ['WEB', 'IOS', 'ANDROID'];
+    let lastError;
+
+    for (const client of clients) {
+      try {
+        console.log(`Attempting fetch with ${client} client...`);
+        
+        const options = {
           agent,
+          lang: 'en',
           requestOptions: {
             family: 4, // Force IPv4
             headers: {
@@ -177,31 +185,35 @@ app.post('/api/video-info', async (req, res) => {
               'Referer': 'https://www.youtube.com/',
               'Accept-Language': 'en-US,en;q=0.9'
             }
-          },
-          lang: 'en'
-        });
-    } catch (e) {
-        console.error('Default client failed:', e.message);
-        console.log('Default client failed, trying iOS...');
-        try {
-            // Fallback to iOS client
-            info = await ytdl.getInfo(videoId, {
-              agent,
-              playerClients: ['IOS'],
-              requestOptions: { family: 4 }, // Force IPv4
-              lang: 'en'
-            });
-        } catch (e2) {
-             console.error('iOS client failed:', e2.message);
-             console.log('iOS client failed, trying Android...');
-             // Fallback to Android
-             info = await ytdl.getInfo(videoId, {
-              agent,
-              playerClients: ['ANDROID'],
-              requestOptions: { family: 4 }, // Force IPv4
-              lang: 'en'
-            });
+          }
+        };
+
+        if (client === 'IOS') options.playerClients = ['IOS'];
+        if (client === 'ANDROID') options.playerClients = ['ANDROID'];
+
+        const tempInfo = await ytdl.getInfo(videoId, options);
+
+        // Check if we got any high quality formats (>= 720p)
+        const hasHighQuality = tempInfo.formats.some(f => f.bitrate && (f.height >= 720 || (f.hasVideo && !f.height))); // Sometimes minimal metadata
+        
+        // If we found high quality, or if it's the last client, use it.
+        // But if it's WEB and low quality, treat as failure to trigger fallback.
+        if (hasHighQuality || client === 'ANDROID') {
+           info = tempInfo;
+           console.log(`Success with ${client} client. High quality found: ${hasHighQuality}`);
+           break; 
+        } else {
+           console.log(`${client} returned only low quality formats. Trying next client...`);
+           lastError = new Error('Low quality formats only');
         }
+      } catch (e) {
+        console.error(`${client} client failed:`, e.message);
+        lastError = e;
+      }
+    }
+
+    if (!info) {
+      throw lastError || new Error('All clients failed');
     }
 
     // Extract basic metadata
