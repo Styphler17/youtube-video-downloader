@@ -144,8 +144,14 @@ app.post('/api/video-info', async (req, res) => {
       return res.status(400).json({ error: 'Invalid YouTube URL' });
     }
 
-    // Get video info using ytdl-core with robust headers
+    // Create an agent with cookies if available (to bypass YouTube IP blocks)
+    const agent = process.env.YOUTUBE_COOKIES 
+      ? ytdl.createAgent(JSON.parse(process.env.YOUTUBE_COOKIES)) 
+      : undefined;
+
+    // Get video info using ytdl-core with robust headers and agent
     const info = await ytdl.getInfo(videoId, {
+      agent,
       requestOptions: {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -302,8 +308,14 @@ app.get('/api/download', async (req, res) => {
       return res.status(400).json({ error: 'videoId and itag are required' });
     }
 
+    // Create an agent with cookies if available
+    const agent = process.env.YOUTUBE_COOKIES 
+      ? ytdl.createAgent(JSON.parse(process.env.YOUTUBE_COOKIES)) 
+      : undefined;
+
     // Get video info to validate and stream from pre-fetched data
     const info = await ytdl.getInfo(videoId, {
+      agent,
       requestOptions: {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -331,8 +343,10 @@ app.get('/api/download', async (req, res) => {
     res.setHeader('Content-Type', mimeType);
 
     // Stream using pre-fetched info for reliability
+    // We reuse the agent created above
     const stream = ytdl.downloadFromInfo(info, {
       quality: itag,
+      agent,
       requestOptions: {
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
