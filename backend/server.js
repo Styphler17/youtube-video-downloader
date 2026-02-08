@@ -142,8 +142,17 @@ app.post('/api/video-info', async (req, res) => {
       return res.status(400).json({ error: 'Invalid YouTube URL' });
     }
 
-    // Get video info using ytdl-core
-    const info = await ytdl.getInfo(videoId);
+    // Get video info using ytdl-core with robust headers
+    const info = await ytdl.getInfo(videoId, {
+      requestOptions: {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Referer': 'https://www.youtube.com/',
+          'Accept-Language': 'en-US,en;q=0.9'
+        }
+      },
+      lang: 'en'
+    });
 
     // Extract basic metadata
     const videoDetails = info.videoDetails;
