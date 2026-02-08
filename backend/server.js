@@ -227,8 +227,9 @@ app.post('/api/video-info', async (req, res) => {
 
     // If no muxed formats found (common on restricted IPs for some videos), fall back to video-only
     // But we should prioritize muxed.
+    // Allow both mp4 and webm containers for video-only (high quality is often webm/vp9)
     const videoOnlyFormats = formats
-      .filter(f => f.container === 'mp4' && f.hasVideo && !f.hasAudio)
+      .filter(f => (f.container === 'mp4' || f.container === 'webm') && f.hasVideo && !f.hasAudio)
       .sort((a, b) => (b.height || 0) - (a.height || 0));
 
     mp4Formats.forEach(format => {
@@ -251,18 +252,27 @@ app.post('/api/video-info', async (req, res) => {
     videoOnlyFormats.forEach(format => {
       if (format.height) {
         const quality = `${format.height}p (No Audio)`;
-        // Check if we already have this quality in muxed
-        const exists = videoFormats.some(f => f.quality === `${format.height}p`);
-        if (!exists) {
-           const fileSize = estimateFileSize(duration, `${format.height}p`, 'mp4');
-           videoFormats.push({
-             quality,
-             format: 'mp4',
-             itag: format.itag,
-             fileSize,
-             hasVideo: true,
-             hasAudio: false
-           });
+        // Check if we already have this quality in muxed (Audio+Video)
+        // We only want to add "No Audio" version if we DON'T have a muxed version of the same quality
+        const existsAsMuxed = videoFormats.some(f => f.quality === `${format.height}p` && f.hasAudio);
+        
+        if (!existsAsMuxed) {
+           const container = format.container || 'mp4';
+           const fileSize = estimateFileSize(duration, `${format.height}p`, container);
+           
+           // Check if we already added this video-only format (deduplicate mp4 vs webm if same quality)
+           const alreadyAdded = videoFormats.some(f => f.quality === quality);
+           
+           if (!alreadyAdded) {
+             videoFormats.push({
+               quality,
+               format: container,
+               itag: format.itag,
+               fileSize,
+               hasVideo: true,
+               hasAudio: false
+             });
+           }
         }
       }
     });
