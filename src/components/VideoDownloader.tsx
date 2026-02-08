@@ -105,7 +105,8 @@ const VideoDownloader: React.FC = () => {
 
           if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
-            throw new Error(errorData.error || 'Failed to fetch video data');
+            // Prefer detailed error message from backend (e.g. ytdl error)
+            throw new Error(errorData.details || errorData.error || 'Failed to fetch video data');
           }
 
           const data = await response.json();
@@ -315,7 +316,10 @@ const VideoDownloader: React.FC = () => {
         body: JSON.stringify({ url: videoInfo.url }),
       });
 
-      if (!infoResponse.ok) throw new Error('Failed to get video formats');
+      if (!infoResponse.ok) {
+        const errorData = await infoResponse.json().catch(() => ({}));
+        throw new Error(errorData.details || errorData.error || 'Failed to get video formats');
+      }
 
       const infoData = await infoResponse.json();
       const selectedBackendFormat = infoData.formats.find(
@@ -426,7 +430,10 @@ const VideoDownloader: React.FC = () => {
         body: JSON.stringify({ url: item.url }),
       });
 
-      if (!infoResponse.ok) throw new Error('Failed to get video formats');
+      if (!infoResponse.ok) {
+        const errorData = await infoResponse.json().catch(() => ({}));
+        throw new Error(errorData.details || errorData.error || 'Failed to get video formats');
+      }
 
       const infoData = await infoResponse.json();
       const selectedBackendFormat = infoData.formats.find(
