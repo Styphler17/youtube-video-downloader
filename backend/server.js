@@ -182,6 +182,8 @@ app.post('/api/video-info', async (req, res) => {
     }
     strategies.push({ name: 'Anonymous', useAgent: false });
 
+    let errors = [];
+
     outerLoop:
     for (const strategy of strategies) {
       console.log(`Starting strategy: ${strategy.name}`);
@@ -193,7 +195,7 @@ app.post('/api/video-info', async (req, res) => {
           let options = {
             lang: 'en',
             requestOptions: {
-              family: 4, // Force IPv4
+              // Remove forced IPv4 to allow IPv6 (often better on Vercel)
             }
           };
 
@@ -229,18 +231,20 @@ app.post('/api/video-info', async (req, res) => {
              console.log(`Success with ${client} client (${strategy.name}). High quality found: ${hasHighQuality}`);
              break outerLoop; 
           } else {
-             console.log(`${client} (${strategy.name}) returned only low quality formats. Trying next...`);
-             lastError = new Error('Low quality formats only');
+             const msg = `${client} (${strategy.name}) returned only low quality formats.`;
+             console.log(msg);
+             errors.push(msg);
           }
         } catch (e) {
-          console.error(`${client} (${strategy.name}) client failed:`, e.message);
-          lastError = e;
+          const msg = `${client} (${strategy.name}) failed: ${e.message}`;
+          console.error(msg);
+          errors.push(msg);
         }
       }
     }
 
     if (!info) {
-      throw lastError || new Error('All clients and strategies failed');
+      throw new Error(`All strategies failed. Details: ${errors.join(' | ')}`);
     }
 
     // Extract basic metadata
@@ -390,20 +394,15 @@ app.post('/api/video-info', async (req, res) => {
   } catch (error) {
     console.error('Error fetching video info:', error);
     
-    // Check if cookies were provided to give better guidance
-    const hasCookies = !!process.env.YOUTUBE_COOKIES;
+    // If it's our aggregated error, pass it through.
+    // Otherwise try to interpret it.
     let userMessage = error.message;
 
-    if (error.message.includes('429')) {
-      userMessage = 'YouTube is rate limiting requests from this server. Please try again later.';
+    if (error.message.includes('All strategies failed')) {
+      // It's our detailed error
+      userMessage = error.message;
     } else if (error.message.includes('Sign in')) {
-      userMessage = hasCookies 
-        ? 'YouTube rejected the provided cookies. They may be expired or invalid.' 
-        : 'YouTube requires sign-in for this video. Please update Vercel env vars with cookies.';
-    } else if (error.message.includes('formats')) {
-      userMessage = hasCookies 
-        ? 'No playable formats found even with cookies. Vercel IP might be blocked.' 
-        : 'No playable formats found. Please add YOUTUBE_COOKIES to Vercel env vars.';
+      userMessage = 'YouTube is blocking requests from this server (Sign In required). Try updating cookies.';
     }
 
     res.status(500).json({
