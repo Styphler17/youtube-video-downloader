@@ -171,7 +171,7 @@ app.post('/api/video-info', async (req, res) => {
     // We try multiple strategies if the default fails OR if it returns low quality
     // NEW STRATEGY: Try WITH cookies first (if available), then WITHOUT cookies if that fails.
     let info;
-    const clients = ['WEB', 'IOS', 'ANDROID', 'TV_EMBEDDED'];
+    const clients = ['WEB', 'IOS', 'ANDROID', 'MWEB', 'TV', 'TV_EMBEDDED'];
     let lastError;
     let usedClient = 'NONE';
     let usedCookies = false;
@@ -195,7 +195,7 @@ app.post('/api/video-info', async (req, res) => {
           let options = {
             lang: 'en',
             requestOptions: {
-              // Remove forced IPv4 to allow IPv6 (often better on Vercel)
+              // Leave default to allow system to choose IPv4/IPv6
             }
           };
 
@@ -203,21 +203,20 @@ app.post('/api/video-info', async (req, res) => {
              options.agent = agent;
           }
 
-          // Only add custom headers for WEB client. 
-          // For Mobile clients, let ytdl-core set the correct User-Agent.
-          if (client === 'WEB') {
-             options.requestOptions.headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-                'Referer': 'https://www.youtube.com/',
-                'Accept-Language': 'en-US,en;q=0.9'
-             };
-          } else if (client === 'IOS') {
+          // Client selection
+          if (client === 'IOS') {
              options.playerClients = ['IOS'];
           } else if (client === 'ANDROID') {
              options.playerClients = ['ANDROID'];
+          } else if (client === 'MWEB') {
+             options.playerClients = ['MWEB'];
+          } else if (client === 'TV') {
+             options.playerClients = ['TV'];
           } else if (client === 'TV_EMBEDDED') {
              options.playerClients = ['TV_EMBEDDED'];
           }
+          // For WEB, we use default (no playerClients set) and NO custom headers
+          // to avoid conflicts with ytdl-core's internal defaults.
 
           const tempInfo = await ytdl.getInfo(videoId, options);
 
@@ -225,9 +224,10 @@ app.post('/api/video-info', async (req, res) => {
           const hasHighQuality = tempInfo.formats.some(f => f.bitrate && (f.height >= 720 || (f.hasVideo && !f.height))); 
           
           // If we found high quality, or if it's the last client, use it.
-          // But if it's WEB and low quality, treat as failure to trigger fallback.
-          // For TV_EMBEDDED, we accept whatever we get because it's our last resort.
-          if (hasHighQuality || client === 'ANDROID' || client === 'TV_EMBEDDED') {
+          // For TV/Mobile clients, we are more lenient if it's our last resort.
+          const isLenientClient = ['ANDROID', 'TV', 'TV_EMBEDDED', 'MWEB'].includes(client);
+          
+          if (hasHighQuality || isLenientClient) {
              info = tempInfo;
              usedClient = `${client} (${strategy.name})`;
              usedCookies = strategy.useAgent;
