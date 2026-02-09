@@ -167,61 +167,80 @@ app.post('/api/video-info', async (req, res) => {
     // We try multiple strategies if the default fails
     // Get video info using ytdl-core with robust headers and agent
     // We try multiple strategies if the default fails OR if it returns low quality
+    // Get video info using ytdl-core with robust headers and agent
+    // We try multiple strategies if the default fails OR if it returns low quality
+    // NEW STRATEGY: Try WITH cookies first (if available), then WITHOUT cookies if that fails.
     let info;
     const clients = ['WEB', 'IOS', 'ANDROID'];
     let lastError;
     let usedClient = 'NONE';
+    let usedCookies = false;
 
-    for (const client of clients) {
-      try {
-        console.log(`Attempting fetch with ${client} client...`);
-        
-        let options = {
-          agent,
-          lang: 'en',
-          requestOptions: {
-            family: 4, // Force IPv4
+    const strategies = [];
+    if (agent) {
+       strategies.push({ name: 'Authenticated', useAgent: true });
+    }
+    strategies.push({ name: 'Anonymous', useAgent: false });
+
+    outerLoop:
+    for (const strategy of strategies) {
+      console.log(`Starting strategy: ${strategy.name}`);
+      
+      for (const client of clients) {
+        try {
+          console.log(`Attempting fetch with ${client} client (${strategy.name})...`);
+          
+          let options = {
+            lang: 'en',
+            requestOptions: {
+              family: 4, // Force IPv4
+            }
+          };
+
+          if (strategy.useAgent) {
+             options.agent = agent;
           }
-        };
 
-        // Only add custom headers for WEB client. 
-        // For Mobile clients, let ytdl-core set the correct User-Agent.
-        if (client === 'WEB') {
-           options.requestOptions.headers = {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-              'Referer': 'https://www.youtube.com/',
-              'Accept-Language': 'en-US,en;q=0.9'
-           };
-        } else if (client === 'IOS') {
-           options.playerClients = ['IOS'];
-        } else if (client === 'ANDROID') {
-           options.playerClients = ['ANDROID'];
+          // Only add custom headers for WEB client. 
+          // For Mobile clients, let ytdl-core set the correct User-Agent.
+          if (client === 'WEB') {
+             options.requestOptions.headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Referer': 'https://www.youtube.com/',
+                'Accept-Language': 'en-US,en;q=0.9'
+             };
+          } else if (client === 'IOS') {
+             options.playerClients = ['IOS'];
+          } else if (client === 'ANDROID') {
+             options.playerClients = ['ANDROID'];
+          }
+
+          const tempInfo = await ytdl.getInfo(videoId, options);
+
+          // Check if we got any high quality formats (>= 720p)
+          const hasHighQuality = tempInfo.formats.some(f => f.bitrate && (f.height >= 720 || (f.hasVideo && !f.height))); 
+          
+          // If we found high quality, or if it's the last client, use it.
+          // But if it's WEB and low quality, treat as failure to trigger fallback.
+          if (hasHighQuality || client === 'ANDROID') {
+             info = tempInfo;
+             usedClient = `${client} (${strategy.name})`;
+             usedCookies = strategy.useAgent;
+             console.log(`Success with ${client} client (${strategy.name}). High quality found: ${hasHighQuality}`);
+             break outerLoop; 
+          } else {
+             console.log(`${client} (${strategy.name}) returned only low quality formats. Trying next...`);
+             lastError = new Error('Low quality formats only');
+          }
+        } catch (e) {
+          console.error(`${client} (${strategy.name}) client failed:`, e.message);
+          lastError = e;
         }
-
-        const tempInfo = await ytdl.getInfo(videoId, options);
-
-        // Check if we got any high quality formats (>= 720p)
-        const hasHighQuality = tempInfo.formats.some(f => f.bitrate && (f.height >= 720 || (f.hasVideo && !f.height))); 
-        
-        // If we found high quality, or if it's the last client, use it.
-        // But if it's WEB and low quality, treat as failure to trigger fallback.
-        if (hasHighQuality || client === 'ANDROID') {
-           info = tempInfo;
-           usedClient = client;
-           console.log(`Success with ${client} client. High quality found: ${hasHighQuality}`);
-           break; 
-        } else {
-           console.log(`${client} returned only low quality formats. Trying next client...`);
-           lastError = new Error('Low quality formats only');
-        }
-      } catch (e) {
-        console.error(`${client} client failed:`, e.message);
-        lastError = e;
       }
     }
 
     if (!info) {
-      throw lastError || new Error('All clients failed');
+      throw lastError || new Error('All clients and strategies failed');
     }
 
     // Extract basic metadata
@@ -362,6 +381,7 @@ app.post('/api/video-info', async (req, res) => {
       videoId,
       debug: {
         usedClient,
+        usedCookies,
         totalFormatsFound: formats.length,
         hasHighQuality: formats.some(f => f.height >= 720)
       }
