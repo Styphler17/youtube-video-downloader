@@ -171,7 +171,7 @@ app.post('/api/video-info', async (req, res) => {
     // We try multiple strategies if the default fails OR if it returns low quality
     // NEW STRATEGY: Try WITH cookies first (if available), then WITHOUT cookies if that fails.
     let info;
-    const clients = ['WEB', 'IOS', 'ANDROID'];
+    const clients = ['WEB', 'IOS', 'ANDROID', 'TV_EMBEDDED'];
     let lastError;
     let usedClient = 'NONE';
     let usedCookies = false;
@@ -215,6 +215,8 @@ app.post('/api/video-info', async (req, res) => {
              options.playerClients = ['IOS'];
           } else if (client === 'ANDROID') {
              options.playerClients = ['ANDROID'];
+          } else if (client === 'TV_EMBEDDED') {
+             options.playerClients = ['TV_EMBEDDED'];
           }
 
           const tempInfo = await ytdl.getInfo(videoId, options);
@@ -224,7 +226,8 @@ app.post('/api/video-info', async (req, res) => {
           
           // If we found high quality, or if it's the last client, use it.
           // But if it's WEB and low quality, treat as failure to trigger fallback.
-          if (hasHighQuality || client === 'ANDROID') {
+          // For TV_EMBEDDED, we accept whatever we get because it's our last resort.
+          if (hasHighQuality || client === 'ANDROID' || client === 'TV_EMBEDDED') {
              info = tempInfo;
              usedClient = `${client} (${strategy.name})`;
              usedCookies = strategy.useAgent;
